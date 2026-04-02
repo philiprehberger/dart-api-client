@@ -16,7 +16,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  philiprehberger_api_client: ^0.1.0
+  philiprehberger_api_client: ^0.2.0
 ```
 
 Then run:
@@ -67,6 +67,40 @@ await client.patch('/users/1', body: {'email': 'new@example.com'});
 
 // DELETE request
 await client.delete('/users/1');
+```
+
+### Typed Deserialization
+
+```dart
+// GET with typed response
+final user = await client.getTyped<User>(
+  '/users/1',
+  decoder: (json) => User.fromJson(json),
+);
+
+// POST with typed response
+final created = await client.postTyped<User>(
+  '/users',
+  body: {'name': 'Alice'},
+  decoder: (json) => User.fromJson(json),
+);
+```
+
+### Caching
+
+```dart
+// Cache GET responses in memory
+final cache = CacheInterceptor(
+  ttl: const Duration(minutes: 5),
+  maxEntries: 100,
+);
+client.addInterceptor(cache);
+
+// Invalidate specific paths
+cache.invalidate('/users');
+
+// Clear entire cache
+cache.clearAll();
 ```
 
 ### Interceptors
@@ -161,6 +195,8 @@ response.duration;   // Duration
 | `put(String path, {Object? body, Map<String, String>? headers})` | Send a PUT request |
 | `patch(String path, {Object? body, Map<String, String>? headers})` | Send a PATCH request |
 | `delete(String path, {Map<String, String>? headers})` | Send a DELETE request |
+| `getTyped<T>(String path, {required T Function(Map<String, dynamic>) decoder, Map<String, String>? query, Map<String, String>? headers})` | Send a GET request and deserialize the response |
+| `postTyped<T>(String path, {required T Function(Map<String, dynamic>) decoder, Object? body, Map<String, String>? headers})` | Send a POST request and deserialize the response |
 | `addInterceptor(Interceptor interceptor)` | Add a request/response interceptor |
 | `removeInterceptor(Interceptor interceptor)` | Remove an interceptor |
 | `close()` | Close the underlying HTTP client |
@@ -214,6 +250,7 @@ response.duration;   // Duration
 |---|---|
 | `HeaderInterceptor(Map<String, String> headers)` | Adds headers to every request |
 | `LogInterceptor(void Function(String) log)` | Logs requests and responses to a callback |
+| `CacheInterceptor({Duration ttl, int maxEntries})` | Caches GET responses in memory with TTL and size limit |
 
 ### RetryConfig
 

@@ -77,6 +77,42 @@ class ApiClient {
   }) =>
       _send('DELETE', path, headers: headers);
 
+  /// Send a GET request and deserialize the response.
+  ///
+  /// [decoder] converts the JSON response to type [T].
+  Future<T> getTyped<T>(
+    String path, {
+    required T Function(Map<String, dynamic>) decoder,
+    Map<String, String>? query,
+    Map<String, String>? headers,
+  }) async {
+    final response = await get(path, query: query, headers: headers);
+    if (!response.isSuccess) {
+      throw HttpError(
+        ApiRequest(method: 'GET', uri: Uri.parse('$baseUrl$path'), headers: headers ?? {}),
+        response,
+      );
+    }
+    return decoder(response.jsonMap);
+  }
+
+  /// Send a POST request and deserialize the response.
+  Future<T> postTyped<T>(
+    String path, {
+    required T Function(Map<String, dynamic>) decoder,
+    Object? body,
+    Map<String, String>? headers,
+  }) async {
+    final response = await post(path, body: body, headers: headers);
+    if (!response.isSuccess) {
+      throw HttpError(
+        ApiRequest(method: 'POST', uri: Uri.parse('$baseUrl$path'), headers: headers ?? {}),
+        response,
+      );
+    }
+    return decoder(response.jsonMap);
+  }
+
   /// Close the underlying HTTP client.
   void close() => _httpClient.close();
 

@@ -592,6 +592,103 @@ void main() {
       client.close();
     });
   });
+
+  group('CacheInterceptor', () {
+    test('caches GET response', () {
+      final cache = CacheInterceptor(ttl: const Duration(minutes: 5));
+      final request = ApiRequest(method: 'GET', uri: Uri.parse('https://api.example.com/data'));
+      final response = ApiResponse(statusCode: 200, headers: {}, body: '{"ok":true}', duration: Duration.zero);
+
+      cache.cacheResponse(request, response);
+      final cached = cache.getCached(request);
+      expect(cached, isNotNull);
+      expect(cached!.body, equals('{"ok":true}'));
+    });
+
+    test('does not cache non-GET requests', () {
+      final cache = CacheInterceptor();
+      final request = ApiRequest(method: 'POST', uri: Uri.parse('https://api.example.com/data'));
+      final response = ApiResponse(statusCode: 200, headers: {}, body: '{}', duration: Duration.zero);
+
+      cache.cacheResponse(request, response);
+      expect(cache.getCached(request), isNull);
+    });
+
+    test('does not cache error responses', () {
+      final cache = CacheInterceptor();
+      final request = ApiRequest(method: 'GET', uri: Uri.parse('https://api.example.com/data'));
+      final response = ApiResponse(statusCode: 500, headers: {}, body: 'error', duration: Duration.zero);
+
+      cache.cacheResponse(request, response);
+      expect(cache.getCached(request), isNull);
+    });
+
+    test('invalidate removes cached entry', () {
+      final cache = CacheInterceptor();
+      final request = ApiRequest(method: 'GET', uri: Uri.parse('https://api.example.com/users'));
+      final response = ApiResponse(statusCode: 200, headers: {}, body: '[]', duration: Duration.zero);
+
+      cache.cacheResponse(request, response);
+      cache.invalidate('/users');
+      expect(cache.getCached(request), isNull);
+    });
+
+    test('clearAll empties cache', () {
+      final cache = CacheInterceptor();
+      final request = ApiRequest(method: 'GET', uri: Uri.parse('https://api.example.com/a'));
+      final response = ApiResponse(statusCode: 200, headers: {}, body: '{}', duration: Duration.zero);
+
+      cache.cacheResponse(request, response);
+      cache.clearAll();
+      expect(cache.size, equals(0));
+    });
+
+    test('respects maxEntries', () {
+      final cache = CacheInterceptor(maxEntries: 2);
+      for (var i = 0; i < 5; i++) {
+        cache.cacheResponse(
+          ApiRequest(method: 'GET', uri: Uri.parse('https://api.example.com/$i')),
+          ApiResponse(statusCode: 200, headers: {}, body: '$i', duration: Duration.zero),
+        );
+      }
+      expect(cache.size, equals(2));
+    });
+  });
+
+  group('Typed deserialization', () {
+    test('getTyped deserializes response', () async {
+      final fake = FakeHttpClient(handler: (_) => _response(200, '{"name":"Alice","age":30}'));
+      final client = ApiClient(baseUrl: 'https://api.example.com', httpClient: fake);
+
+      final user = await client.getTyped('/user', decoder: (json) => json['name'] as String);
+      expect(user, equals('Alice'));
+      client.close();
+    });
+
+    test('getTyped throws on error response', () async {
+      final fake = FakeHttpClient(handler: (_) => _response(404, '{"error":"not found"}'));
+      final client = ApiClient(baseUrl: 'https://api.example.com', httpClient: fake);
+
+      expect(
+        () => client.getTyped('/user', decoder: (json) => json),
+        throwsA(isA<HttpError>()),
+      );
+      client.close();
+    });
+
+    test('postTyped deserializes response', () async {
+      final fake = FakeHttpClient(handler: (_) => _response(201, '{"id":1,"name":"Alice"}'));
+      final client = ApiClient(baseUrl: 'https://api.example.com', httpClient: fake);
+
+      final id = await client.postTyped(
+        '/users',
+        body: {'name': 'Alice'},
+        decoder: (json) => json['id'] as int,
+      );
+      expect(id, equals(1));
+      client.close();
+    });
+  });
 }
 
 class _TrackingInterceptor extends Interceptor {

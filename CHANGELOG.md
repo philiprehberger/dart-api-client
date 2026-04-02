@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-01
+
+### Added
+- `CacheInterceptor` for in-memory GET response caching with TTL and max entries
+- `getTyped<T>()` method for typed deserialization of GET responses
+- `postTyped<T>()` method for typed deserialization of POST responses
+
 ## [0.1.0] - 2026-04-01
 
 ### Added
