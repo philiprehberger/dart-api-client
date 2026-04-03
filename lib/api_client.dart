@@ -5,6 +5,8 @@ export 'src/api_client_base.dart';
 export 'src/api_request.dart';
 export 'src/api_response.dart';
 export 'src/interceptor.dart';
+export 'src/middleware.dart';
+export 'src/multipart_file.dart';
 export 'src/retry_interceptor.dart';
 export 'src/api_error.dart';
 export 'src/cache_interceptor.dart';

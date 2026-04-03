@@ -1,7 +1,7 @@
 name: philiprehberger_api_client
 description: >-
   Declarative API client with typed responses, retries, and interceptors
-version: 0.2.0
+version: 0.3.0
 homepage: https://philiprehberger.com/open-source-packages/dart/philiprehberger_api_client
 repository: https://github.com/philiprehberger/dart-api-client
 issue_tracker: https://github.com/philiprehberger/dart-api-client/issues
@@ -16,6 +16,7 @@ environment:
 
 dependencies:
   http: ^1.2.0
+  http_parser: ^4.0.0
 
 dev_dependencies:
   test: ^1.25.0

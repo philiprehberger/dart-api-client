@@ -7,19 +7,19 @@ import 'package:test/test.dart';
 
 /// A fake HTTP client that returns canned responses.
 class FakeHttpClient extends http.BaseClient {
-  final List<http.Request> requests = [];
+  final List<http.BaseRequest> requests = [];
   int _callCount = 0;
 
-  http.StreamedResponse Function(http.Request) _handler;
+  http.StreamedResponse Function(http.BaseRequest) _handler;
 
-  FakeHttpClient({http.StreamedResponse Function(http.Request)? handler})
+  FakeHttpClient({http.StreamedResponse Function(http.BaseRequest)? handler})
       : _handler = handler ??
             ((_) => http.StreamedResponse(
                   Stream.value(utf8.encode('{"ok":true}')),
                   200,
                 ));
 
-  set handler(http.StreamedResponse Function(http.Request) value) =>
+  set handler(http.StreamedResponse Function(http.BaseRequest) value) =>
       _handler = value;
 
   int get callCount => _callCount;
@@ -27,7 +27,7 @@ class FakeHttpClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     _callCount++;
-    requests.add(request as http.Request);
+    requests.add(request);
     return _handler(request);
   }
 }
@@ -400,10 +400,11 @@ void main() {
 
       await client.post('/users', body: {'name': 'Alice'});
 
-      expect(fake.requests.first.method, equals('POST'));
-      expect(fake.requests.first.headers['Content-Type'],
+      final request = fake.requests.first as http.Request;
+      expect(request.method, equals('POST'));
+      expect(request.headers['Content-Type'],
           equals('application/json'));
-      expect(fake.requests.first.body, equals('{"name":"Alice"}'));
+      expect(request.body, equals('{"name":"Alice"}'));
       client.close();
     });
 
@@ -525,7 +526,8 @@ void main() {
 
       await client.post('/raw', body: 'raw text');
 
-      expect(fake.requests.first.body, equals('raw text'));
+      final request = fake.requests.first as http.Request;
+      expect(request.body, equals('raw text'));
       client.close();
     });
 
@@ -689,6 +691,224 @@ void main() {
       client.close();
     });
   });
+
+  group('MultipartFile', () {
+    test('creates with required fields', () {
+      final file = MultipartFile(
+        field: 'avatar',
+        bytes: [1, 2, 3],
+      );
+
+      expect(file.field, equals('avatar'));
+      expect(file.bytes, equals([1, 2, 3]));
+      expect(file.filename, isNull);
+      expect(file.contentType, isNull);
+    });
+
+    test('creates with all fields', () {
+      final file = MultipartFile(
+        field: 'document',
+        bytes: [4, 5, 6],
+        filename: 'report.pdf',
+        contentType: 'application/pdf',
+      );
+
+      expect(file.field, equals('document'));
+      expect(file.bytes, equals([4, 5, 6]));
+      expect(file.filename, equals('report.pdf'));
+      expect(file.contentType, equals('application/pdf'));
+    });
+  });
+
+  group('AuthMiddleware', () {
+    test('adds Authorization header', () async {
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      client.addMiddleware(
+          AuthMiddleware(scheme: 'Bearer', token: 'my-token'));
+
+      await client.get('/protected');
+
+      expect(fake.requests.first.headers['Authorization'],
+          equals('Bearer my-token'));
+      client.close();
+    });
+
+    test('preserves existing headers', () async {
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      client.addMiddleware(
+          AuthMiddleware(scheme: 'Basic', token: 'abc123'));
+
+      await client.get('/test', headers: {'X-Custom': 'value'});
+
+      expect(fake.requests.first.headers['Authorization'],
+          equals('Basic abc123'));
+      expect(
+          fake.requests.first.headers['X-Custom'], equals('value'));
+      client.close();
+    });
+  });
+
+  group('LoggingMiddleware', () {
+    test('logs request and response', () async {
+      final logs = <String>[];
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      client.addMiddleware(LoggingMiddleware(logger: logs.add));
+
+      await client.get('/data');
+
+      expect(logs, hasLength(2));
+      expect(logs[0], contains('GET'));
+      expect(logs[0], contains('https://api.example.com/data'));
+      expect(logs[1], contains('200'));
+    });
+  });
+
+  group('Middleware chaining', () {
+    test('runs middlewares in order', () async {
+      final order = <String>[];
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      client.addMiddleware(_TrackingMiddleware('first', order));
+      client.addMiddleware(_TrackingMiddleware('second', order));
+
+      await client.get('/test');
+
+      expect(order,
+          equals(['first-before', 'second-before', 'second-after', 'first-after']));
+      client.close();
+    });
+
+    test('removeMiddleware removes from pipeline', () async {
+      final order = <String>[];
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      final middleware = _TrackingMiddleware('removed', order);
+      client.addMiddleware(middleware);
+      client.removeMiddleware(middleware);
+
+      await client.get('/test');
+
+      expect(order, isEmpty);
+      client.close();
+    });
+  });
+
+  group('Multipart requests', () {
+    test('postMultipart sends multipart request', () async {
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      await client.postMultipart(
+        '/upload',
+        fields: {'name': 'test'},
+        files: [
+          MultipartFile(
+            field: 'file',
+            bytes: [1, 2, 3],
+            filename: 'test.txt',
+          ),
+        ],
+      );
+
+      final request = fake.requests.first as http.MultipartRequest;
+      expect(request.method, equals('POST'));
+      expect(request.url.toString(),
+          equals('https://api.example.com/upload'));
+      expect(request.fields['name'], equals('test'));
+      expect(request.files, hasLength(1));
+      expect(request.files.first.field, equals('file'));
+      expect(request.files.first.filename, equals('test.txt'));
+      client.close();
+    });
+
+    test('putMultipart sends multipart request', () async {
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      await client.putMultipart(
+        '/upload/1',
+        fields: {'name': 'updated'},
+        files: [
+          MultipartFile(
+            field: 'file',
+            bytes: [4, 5, 6],
+            filename: 'updated.txt',
+            contentType: 'text/plain',
+          ),
+        ],
+      );
+
+      final request = fake.requests.first as http.MultipartRequest;
+      expect(request.method, equals('PUT'));
+      expect(request.url.toString(),
+          equals('https://api.example.com/upload/1'));
+      expect(request.fields['name'], equals('updated'));
+      expect(request.files, hasLength(1));
+      client.close();
+    });
+
+    test('postMultipart applies interceptor headers', () async {
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      client.addInterceptor(HeaderInterceptor({'X-Api-Key': 'abc'}));
+
+      await client.postMultipart(
+        '/upload',
+        fields: {'name': 'test'},
+      );
+
+      expect(fake.requests.first.headers['X-Api-Key'], equals('abc'));
+      client.close();
+    });
+  });
+}
+
+class _TrackingMiddleware extends Middleware {
+  final String name;
+  final List<String> order;
+
+  _TrackingMiddleware(this.name, this.order);
+
+  @override
+  Future<ApiResponse> handle(ApiRequest request, Next next) async {
+    order.add('$name-before');
+    final response = await next(request);
+    order.add('$name-after');
+    return response;
+  }
 }
 
 class _TrackingInterceptor extends Interceptor {

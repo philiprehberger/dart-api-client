@@ -1,14 +1,17 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import 'api_request.dart';
 import 'api_response.dart';
 import 'api_error.dart';
 import 'interceptor.dart';
+import 'middleware.dart';
+import 'multipart_file.dart';
 import 'retry_interceptor.dart';
 
-/// Declarative API client with interceptors and retry support.
+/// Declarative API client with interceptors, middleware, and retry support.
 class ApiClient {
   /// The base URL prepended to all request paths.
   final String baseUrl;
@@ -20,6 +23,7 @@ class ApiClient {
   final RetryConfig? retryConfig;
 
   final List<Interceptor> _interceptors = [];
+  final List<Middleware> _middlewares = [];
   final http.Client _httpClient;
 
   /// Create an API client.
@@ -37,6 +41,13 @@ class ApiClient {
   /// Remove an interceptor.
   void removeInterceptor(Interceptor interceptor) =>
       _interceptors.remove(interceptor);
+
+  /// Add a middleware to the pipeline.
+  void addMiddleware(Middleware middleware) => _middlewares.add(middleware);
+
+  /// Remove a middleware from the pipeline.
+  void removeMiddleware(Middleware middleware) =>
+      _middlewares.remove(middleware);
 
   /// Send a GET request.
   Future<ApiResponse> get(
@@ -76,6 +87,26 @@ class ApiClient {
     Map<String, String>? headers,
   }) =>
       _send('DELETE', path, headers: headers);
+
+  /// Send a POST multipart request.
+  Future<ApiResponse> postMultipart(
+    String path, {
+    Map<String, String>? fields,
+    List<MultipartFile>? files,
+    Map<String, String>? headers,
+  }) =>
+      _sendMultipart('POST', path,
+          fields: fields, files: files, headers: headers);
+
+  /// Send a PUT multipart request.
+  Future<ApiResponse> putMultipart(
+    String path, {
+    Map<String, String>? fields,
+    List<MultipartFile>? files,
+    Map<String, String>? headers,
+  }) =>
+      _sendMultipart('PUT', path,
+          fields: fields, files: files, headers: headers);
 
   /// Send a GET request and deserialize the response.
   ///
@@ -146,7 +177,128 @@ class ApiClient {
       request = interceptor.onRequest(request);
     }
 
-    return _executeWithRetry(request);
+    return _executeWithMiddleware(request);
+  }
+
+  Future<ApiResponse> _sendMultipart(
+    String method,
+    String path, {
+    Map<String, String>? fields,
+    List<MultipartFile>? files,
+    Map<String, String>? headers,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path');
+
+    final multipartRequest = http.MultipartRequest(method, uri);
+    if (fields != null) {
+      multipartRequest.fields.addAll(fields);
+    }
+    if (files != null) {
+      for (final file in files) {
+        multipartRequest.files.add(http.MultipartFile.fromBytes(
+          file.field,
+          file.bytes,
+          filename: file.filename,
+          contentType: file.contentType != null
+              ? _parseMediaType(file.contentType!)
+              : null,
+        ));
+      }
+    }
+    if (headers != null) {
+      multipartRequest.headers.addAll(headers);
+    }
+
+    // Apply interceptor headers
+    var request = ApiRequest(
+      method: method,
+      uri: uri,
+      headers: {...?headers},
+    );
+    for (final interceptor in _interceptors) {
+      request = interceptor.onRequest(request);
+    }
+    multipartRequest.headers.addAll(request.headers);
+
+    // Apply middleware headers
+    if (_middlewares.isNotEmpty) {
+      var middlewareRequest = request;
+      for (final middleware in _middlewares) {
+        middlewareRequest = await _extractMiddlewareHeaders(
+            middleware, middlewareRequest);
+      }
+      multipartRequest.headers.addAll(middlewareRequest.headers);
+    }
+
+    final stopwatch = Stopwatch()..start();
+    try {
+      final streamedResponse =
+          await _httpClient.send(multipartRequest).timeout(timeout);
+      final responseBody = await streamedResponse.stream.bytesToString();
+      stopwatch.stop();
+
+      var response = ApiResponse(
+        statusCode: streamedResponse.statusCode,
+        headers: streamedResponse.headers,
+        body: responseBody,
+        duration: stopwatch.elapsed,
+      );
+
+      // Run response interceptors
+      for (final interceptor in _interceptors) {
+        response = interceptor.onResponse(response);
+      }
+
+      return response;
+    } on Exception catch (e) {
+      stopwatch.stop();
+      if (e.toString().contains('TimeoutException')) {
+        throw TimeoutError(uri.toString());
+      }
+      rethrow;
+    }
+  }
+
+  /// Parse a content type string into a MediaType.
+  MediaType _parseMediaType(String contentType) {
+    final parts = contentType.split('/');
+    if (parts.length == 2) {
+      return MediaType(parts[0], parts[1]);
+    }
+    return MediaType('application', 'octet-stream');
+  }
+
+  /// Extract headers that a middleware would add, without executing the pipeline.
+  Future<ApiRequest> _extractMiddlewareHeaders(
+      Middleware middleware, ApiRequest request) async {
+    // Run the middleware with a no-op next that just returns the request as-is
+    ApiRequest? captured;
+    await middleware.handle(request, (req) async {
+      captured = req;
+      return const ApiResponse(
+        statusCode: 200,
+        headers: {},
+        body: '',
+        duration: Duration.zero,
+      );
+    });
+    return captured ?? request;
+  }
+
+  Future<ApiResponse> _executeWithMiddleware(ApiRequest request) {
+    if (_middlewares.isEmpty) {
+      return _executeWithRetry(request);
+    }
+
+    // Build middleware chain from inside out
+    Next chain = (req) => _executeWithRetry(req);
+    for (var i = _middlewares.length - 1; i >= 0; i--) {
+      final middleware = _middlewares[i];
+      final next = chain;
+      chain = (req) => middleware.handle(req, next);
+    }
+
+    return chain(request);
   }
 
   Future<ApiResponse> _executeWithRetry(ApiRequest request) async {
