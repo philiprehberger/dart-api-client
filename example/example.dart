@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:philiprehberger_api_client/api_client.dart';
 
 void main() async {
@@ -18,6 +20,15 @@ void main() async {
   }));
 
   client.addInterceptor(LogInterceptor(print));
+
+  // Add middleware for authentication
+  client.addMiddleware(AuthMiddleware(
+    scheme: 'Bearer',
+    token: 'my-api-token',
+  ));
+
+  // Add middleware for logging
+  client.addMiddleware(LoggingMiddleware(logger: print));
 
   try {
     // GET request
@@ -48,6 +59,35 @@ void main() async {
     // DELETE request
     final deleted = await client.delete('/posts/1');
     print('Deleted: ${deleted.isSuccess}');
+
+    // Multipart upload
+    final uploadResponse = await client.postMultipart(
+      '/posts',
+      fields: {'title': 'Uploaded'},
+      files: [
+        MultipartFile(
+          field: 'attachment',
+          bytes: utf8.encode('file contents'),
+          filename: 'notes.txt',
+          contentType: 'text/plain',
+        ),
+      ],
+    );
+    print('Upload status: ${uploadResponse.statusCode}');
+
+    // PUT multipart
+    final replaceResponse = await client.putMultipart(
+      '/posts/1',
+      fields: {'title': 'Replaced'},
+      files: [
+        MultipartFile(
+          field: 'attachment',
+          bytes: utf8.encode('updated contents'),
+          filename: 'notes.txt',
+        ),
+      ],
+    );
+    print('Replace status: ${replaceResponse.statusCode}');
 
     // Response inspection
     final response = await client.get('/posts/1');

@@ -16,7 +16,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  philiprehberger_api_client: ^0.2.0
+  philiprehberger_api_client: ^0.3.0
 ```
 
 Then run:
@@ -101,6 +101,59 @@ cache.invalidate('/users');
 
 // Clear entire cache
 cache.clearAll();
+```
+
+### Middleware
+
+```dart
+// Add authentication to every request
+client.addMiddleware(AuthMiddleware(scheme: 'Bearer', token: 'my-token'));
+
+// Log requests and responses
+client.addMiddleware(LoggingMiddleware(logger: print));
+
+// Custom middleware
+class RateLimitMiddleware extends Middleware {
+  @override
+  Future<ApiResponse> handle(ApiRequest request, Next next) async {
+    await _waitForRateLimit();
+    return next(request);
+  }
+}
+
+// Remove middleware
+client.removeMiddleware(authMiddleware);
+```
+
+### Multipart Uploads
+
+```dart
+// POST multipart with fields and files
+final response = await client.postMultipart(
+  '/upload',
+  fields: {'description': 'Profile photo'},
+  files: [
+    MultipartFile(
+      field: 'avatar',
+      bytes: imageBytes,
+      filename: 'photo.jpg',
+      contentType: 'image/jpeg',
+    ),
+  ],
+);
+
+// PUT multipart
+await client.putMultipart(
+  '/upload/1',
+  fields: {'description': 'Updated photo'},
+  files: [
+    MultipartFile(
+      field: 'avatar',
+      bytes: newImageBytes,
+      filename: 'photo.jpg',
+    ),
+  ],
+);
 ```
 
 ### Interceptors
@@ -197,8 +250,12 @@ response.duration;   // Duration
 | `delete(String path, {Map<String, String>? headers})` | Send a DELETE request |
 | `getTyped<T>(String path, {required T Function(Map<String, dynamic>) decoder, Map<String, String>? query, Map<String, String>? headers})` | Send a GET request and deserialize the response |
 | `postTyped<T>(String path, {required T Function(Map<String, dynamic>) decoder, Object? body, Map<String, String>? headers})` | Send a POST request and deserialize the response |
+| `postMultipart(String path, {Map<String, String>? fields, List<MultipartFile>? files, Map<String, String>? headers})` | Send a POST multipart request |
+| `putMultipart(String path, {Map<String, String>? fields, List<MultipartFile>? files, Map<String, String>? headers})` | Send a PUT multipart request |
 | `addInterceptor(Interceptor interceptor)` | Add a request/response interceptor |
 | `removeInterceptor(Interceptor interceptor)` | Remove an interceptor |
+| `addMiddleware(Middleware middleware)` | Add a middleware to the pipeline |
+| `removeMiddleware(Middleware middleware)` | Remove a middleware from the pipeline |
 | `close()` | Close the underlying HTTP client |
 
 ### ApiRequest
@@ -251,6 +308,29 @@ response.duration;   // Duration
 | `HeaderInterceptor(Map<String, String> headers)` | Adds headers to every request |
 | `LogInterceptor(void Function(String) log)` | Logs requests and responses to a callback |
 | `CacheInterceptor({Duration ttl, int maxEntries})` | Caches GET responses in memory with TTL and size limit |
+
+### Middleware
+
+| Method | Description |
+|---|---|
+| `handle(ApiRequest request, Next next)` | Process a request and return a response; call `next` to continue the pipeline |
+
+### Built-in Middlewares
+
+| Class | Description |
+|---|---|
+| `AuthMiddleware({required String scheme, required String token})` | Adds `Authorization` header to every request |
+| `LoggingMiddleware({void Function(String)? logger})` | Logs request method/URI and response status/duration |
+
+### MultipartFile
+
+| Method / Property | Description |
+|---|---|
+| `MultipartFile({required String field, required List<int> bytes, String? filename, String? contentType})` | Create a multipart file |
+| `field` | The form field name |
+| `bytes` | The file content as bytes |
+| `filename` | The filename, if any |
+| `contentType` | The MIME content type, if any |
 
 ### RetryConfig
 

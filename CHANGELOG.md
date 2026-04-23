@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-02
+
+### Added
+- `Middleware` abstract class for composable request/response pipeline
+- `AuthMiddleware` for automatic `Authorization` header injection
+- `LoggingMiddleware` for request/response logging
+- `ApiClient.addMiddleware()` and `removeMiddleware()`
+- `ApiClient.postMultipart()` and `putMultipart()` for file uploads
+- `MultipartFile` value class for multipart form data
+
 ## [0.2.0] - 2026-04-01
 
 ### Added
