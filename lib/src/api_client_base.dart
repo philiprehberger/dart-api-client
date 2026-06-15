@@ -88,6 +88,17 @@ class ApiClient {
   }) =>
       _send('DELETE', path, headers: headers);
 
+  /// Send a HEAD request.
+  ///
+  /// Useful for checking resource existence or cache validation without
+  /// downloading the response body.
+  Future<ApiResponse> head(
+    String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers,
+  }) =>
+      _send('HEAD', path, query: query, headers: headers);
+
   /// Send a POST multipart request.
   Future<ApiResponse> postMultipart(
     String path, {

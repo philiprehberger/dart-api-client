@@ -447,6 +447,34 @@ void main() {
       client.close();
     });
 
+    test('sends HEAD request', () async {
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      final response = await client.head('/users/1');
+
+      expect(fake.requests.first.method, equals('HEAD'));
+      expect(response.isSuccess, isTrue);
+      client.close();
+    });
+
+    test('HEAD request appends query parameters', () async {
+      final fake = FakeHttpClient();
+      final client = ApiClient(
+        baseUrl: 'https://api.example.com',
+        httpClient: fake,
+      );
+
+      await client.head('/users', query: {'role': 'admin'});
+
+      expect(fake.requests.first.method, equals('HEAD'));
+      expect(fake.requests.first.url.queryParameters['role'], equals('admin'));
+      client.close();
+    });
+
     test('appends query parameters', () async {
       final fake = FakeHttpClient();
       final client = ApiClient(

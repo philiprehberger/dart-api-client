@@ -4,6 +4,8 @@
 [![pub package](https://img.shields.io/pub/v/philiprehberger_api_client.svg)](https://pub.dev/packages/philiprehberger_api_client)
 [![Last updated](https://img.shields.io/github/last-commit/philiprehberger/dart-api-client)](https://github.com/philiprehberger/dart-api-client/commits/main)
 
+![philiprehberger_api_client](https://raw.githubusercontent.com/philiprehberger/dart-api-client/main/package-card.webp)
+
 Declarative API client with typed responses, retries, and interceptors
 
 ## Requirements
@@ -16,7 +18,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  philiprehberger_api_client: ^0.3.0
+  philiprehberger_api_client: ^0.4.0
 ```
 
 Then run:
@@ -67,6 +69,10 @@ await client.patch('/users/1', body: {'email': 'new@example.com'});
 
 // DELETE request
 await client.delete('/users/1');
+
+// HEAD request — check resource existence without downloading body
+final head = await client.head('/users/1');
+print(head.statusCode);
 ```
 
 ### Typed Deserialization
@@ -248,6 +254,7 @@ response.duration;   // Duration
 | `put(String path, {Object? body, Map<String, String>? headers})` | Send a PUT request |
 | `patch(String path, {Object? body, Map<String, String>? headers})` | Send a PATCH request |
 | `delete(String path, {Map<String, String>? headers})` | Send a DELETE request |
+| `head(String path, {Map<String, String>? query, Map<String, String>? headers})` | Send a HEAD request |
 | `getTyped<T>(String path, {required T Function(Map<String, dynamic>) decoder, Map<String, String>? query, Map<String, String>? headers})` | Send a GET request and deserialize the response |
 | `postTyped<T>(String path, {required T Function(Map<String, dynamic>) decoder, Object? body, Map<String, String>? headers})` | Send a POST request and deserialize the response |
 | `postMultipart(String path, {Map<String, String>? fields, List<MultipartFile>? files, Map<String, String>? headers})` | Send a POST multipart request |
